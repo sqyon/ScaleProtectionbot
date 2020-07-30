@@ -479,6 +479,8 @@ def week_rank(update, context):
 
 
 def week_rank_(update, context):
+	if not _running_challenge_only(update, context):
+		return
 	today = datetime.now()
 	today = datetime(today.year, today.month, today.day, 0, 0, 0, 0)
 	time_limit = today - timedelta(days=7)
@@ -496,6 +498,8 @@ def overall_rank(update, context):
 
 
 def overall_rank_(update, context):
+	if not _running_challenge_only(update, context):
+		return
 	_rank(update, context, datetime.min)
 
 
@@ -510,6 +514,8 @@ def rank(update, context):
 
 
 def rank_(update, context):
+	if not _running_challenge_only(update, context):
+		return
 	group_id, user_id, username, message_id = _get_info(update)
 	inputs = update.to_dict()['message']['text']
 	try:
@@ -535,6 +541,8 @@ def plot(update, context):
 
 
 def plot_(update, context):
+	if not _running_challenge_only(update, context):
+		return
 	group_id, user_id, username, message_id = _get_info(update)
 	inputs = update.to_dict()['message']['text']
 	try:
