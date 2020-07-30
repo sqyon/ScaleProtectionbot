@@ -1,6 +1,8 @@
 import json
 import logging
+import math
 import os
+import sys
 from datetime import datetime, timedelta
 from math import sqrt
 
@@ -22,14 +24,14 @@ help_text = """欢迎使用本 bot，请使用如下命令：
 /plot 查看指定天数的体重变化图
 """
 
-token = 'YOUR_TOKEN'
 challenges_path = './data/challenges.json'
 
 metrics = {
 	'1': {'name': '体重变化', 'expression': '原体重-现体重', 'key': lambda x: (x['weight'][0][1] - x['weight'][-1][1])},
 	'2': {'name': '体重变化比例', 'expression': '(原体重-现体重)/原体重', 'key': lambda x: (x['weight'][0][1] - x['weight'][-1][1])},
 	'3': {'name': '根号难度加权', 'expression': '(原体重-现体重)/√(初始体重-标准体重)，其中标准体重按照 BMI = 21 计算',
-	      'key': lambda x: ((x['weight'][0][1] - x['weight'][-1][1]) / (sqrt(x['original_weight'] - 21 * x['height'] ** 2)))},
+	      'key': lambda x: math.copysign(((x['weight'][0][1] - x['weight'][-1][1]) / (sqrt(abs(x['original_weight'] - 21 * x['height'] ** 2)))),
+	                                     x['original_weight'] - 21 * x['height'] ** 2)},
 }
 
 
@@ -602,4 +604,5 @@ def main(token):
 
 
 if __name__ == '__main__':
+	token = sys.argv[1]
 	main(token=token)
