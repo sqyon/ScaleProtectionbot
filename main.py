@@ -11,18 +11,21 @@ import telegram
 from telegram.ext import Updater, CommandHandler
 
 help_text = """欢迎使用本 bot，请使用如下命令：
-/new_challenge 在本群开展减肥挑战 admin only
-/end_challenge 结束本群的挑战 admin only
-/delete_user 删除用户数据 admin only
-/strategy 选择排名策略 admin only
-/join_challenge 加入本群的减肥挑战
-/weight 添加体重记录（只记录当天最后一条）
+/weight 或者 /w 添加体重记录（只记录当天最后一条）
 /height 修正身高记录（身高不统计变化，按常数计算）
 /rank 查看指定天数的排名
 /week 查看本周排名
 /overall 查看总排名
 /plot 查看指定天数的体重变化图
+/new_challenge 在本群开展减肥挑战 admin only
+/end_challenge 结束本群的挑战 admin only
+/delete_user 删除用户数据 admin only
+/strategy 选择排名策略 admin only
+/join_challenge 加入本群的减肥挑战
 """
+
+start_help = """欢迎使用减肥群 bot，请将本 bot 拉入超级群组中开启减肥挑战。
+使用 /help 可以查看所有命令。"""
 
 challenges_path = './data/challenges.json'
 
@@ -53,6 +56,15 @@ def _is_today(timestamp):
 def _get_username(group_id, user_id):
 	bot = telegram.Bot(token)
 	return bot.get_chat_member(group_id, user_id).to_dict()['user']['username']
+
+
+def _get_fullname(group_id, user_id):
+	bot = telegram.Bot(token)
+	user = bot.get_chat_member(group_id, user_id).to_dict()['user']
+	if 'last_name' in user:
+		return f'{user["first_name"]} {user["last_name"]}'
+	else:
+		return f'{user["first_name"]}'
 
 
 def _get_info(update):
@@ -158,6 +170,10 @@ def _ensure_path(path):
 		os.makedirs(path)
 
 
+def _calc_bmi(weight, height):
+	return weight / height ** 2
+
+
 def _running_challenge_only(update, context):
 	if not (_supergroup_only(update, context)):
 		return False
@@ -188,13 +204,14 @@ def _get_scale_data(update, context, time_limit, users=None):
 		if user_id == 'strategy' or user_id == 'deleted_user_data':
 			continue
 		username = _get_username(group_id, user_id)
+		fullname = _get_fullname(group_id, user_id)
 		if 'height' not in data:
 			context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'@{username} 没有添加过身高数据')
 			continue
 		if len(data['weight']) == 0:
 			context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'@{username} 没有添加过体重数据')
 			continue
-		ret = {'username': username, 'height': data['height'], 'original_weight': data['weight'][0][1], 'weight': []}
+		ret = {'fullname': fullname, 'username': username, 'height': data['height'], 'original_weight': data['weight'][0][1], 'weight': []}
 		for data_timestamp, weight_data in data['weight'][::-1]:
 			data_time = datetime.fromtimestamp(float(data_timestamp))
 			if data_time >= time_limit:
@@ -219,8 +236,13 @@ def _rank(update, context, time_limit):
 	user_data.sort(key=lambda x: -x['score'])
 	rank_list = '排名    username    体重变化    分数\n'
 	for i, user in enumerate(user_data):
-		rank_list += f'{i + 1} {user["username"]} {user["weight"][0][1] - user["weight"][-1][1]} {user["score"]}\n'
-	context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=rank_list)
+		rank_list += f'*{i + 1}* `{user["fullname"]} {user["weight"][0][1] - user["weight"][-1][1]:.2f} {user["score"]:.2f}`\n'
+	context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=rank_list, parse_mode=telegram.ParseMode.MARKDOWN_V2)
+
+
+def start(update, context):
+	group_id, user_id, username, message_id = _get_info(update)
+	context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=start_help)
 
 
 def print_help(update, context):
@@ -384,7 +406,7 @@ def weight_(update, context):
 	try:
 		inputs = inputs.split()[1]
 		inputs = float(inputs)
-		if inputs < 40 or inputs > 150:
+		if inputs < 40 or inputs > 400:
 			raise ValueError
 	except:
 		context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'请输入正确的体重数据')
@@ -393,13 +415,27 @@ def weight_(update, context):
 	scale, scale_path = _ensure_scale(update)
 
 	new_data = (_get_timestamp(), inputs)
-	if len(scale[user_id]['weight']) > 0 and _is_today(scale[user_id]['weight'][-1][0]):
-		scale[user_id]['weight'].pop(-1)
+	outputs = f'{_get_timestr(new_data[0])} @{username} 添加体重记录 {new_data[1]} 千克。'
+	if len(scale[user_id]['weight']) > 0:
+		if _is_today(scale[user_id]['weight'][-1][0]):
+			scale[user_id]['weight'].pop(-1)
+		if len(scale[user_id]['weight']) > 0:
+			outputs += f'\n上次体重 {scale[user_id]["weight"][-1][1]} 千克，记录时间是 {_get_timestr(scale[user_id]["weight"][-1][0])}。体重变化了 {new_data[1] - scale[user_id]["weight"][-1][1]:.2f} 千克。'
+
+	if 'height' in scale[user_id]:
+		this_bmi = _calc_bmi(new_data[1], scale[user_id]["height"])
+		outputs += f'\n你的 BMI 是 {this_bmi:.2f}。'
+		if len(scale[user_id]['weight']) > 0:
+			last_bmi = _calc_bmi(scale[user_id]["weight"][-1][1], scale[user_id]["height"])
+			outputs += f'上次的 BMI 是 {last_bmi:.2f}，变化了 {this_bmi - last_bmi:.2f}。'
+
 	scale[user_id]['weight'].append(new_data)
 
 	json.dump(scale, open(f'{scale_path}/scale.json', "w"))
-	context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id,
-	                         text=f'{_get_timestr(new_data[0])} @{username} 添加体重记录 {new_data[1]} 千克')
+	context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=outputs)
+	if len(scale[user_id]['weight']) > 1 and abs(scale[user_id]["weight"][-2][1] - new_data[1]) > 5:
+		context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'*⚠️和上次的体重变化比较大，请注意是否输入错误⚠️️*',
+		                         parse_mode=telegram.ParseMode.MARKDOWN_V2)
 
 
 def height(update, context):
@@ -582,6 +618,7 @@ def main(token):
 	if not os.path.exists('./data'):
 		os.makedirs('./data')
 
+	dp.add_handler(CommandHandler('start', start))
 	dp.add_handler(CommandHandler('help', print_help))
 
 	dp.add_handler(CommandHandler('new_challenge', new_challenge))
@@ -589,6 +626,7 @@ def main(token):
 	dp.add_handler(CommandHandler('join_challenge', join_challenge))
 	dp.add_handler(CommandHandler('delete_user', delete_user))
 
+	dp.add_handler(CommandHandler('w', weight))
 	dp.add_handler(CommandHandler('weight', weight))
 	dp.add_handler(CommandHandler('height', height))
 
