@@ -6,7 +6,9 @@ import sys
 from datetime import datetime, timedelta
 from math import sqrt
 
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import numpy as np
 import telegram
 from telegram.ext import Updater, CommandHandler
 
@@ -16,7 +18,7 @@ help_text = """欢迎使用本 bot，请使用如下命令：
 /rank 查看指定天数的排名
 /week 查看本周排名
 /overall 查看总排名
-/plot 查看指定天数的体重变化图
+/plot 查看指定天数对比其他用户的的体重变化图
 /new_challenge 在本群开展减肥挑战 admin only
 /end_challenge 结束本群的挑战 admin only
 /delete_user 删除用户数据 admin only
@@ -31,7 +33,7 @@ challenges_path = './data/challenges.json'
 
 metrics = {
 	'1': {'name': '体重变化', 'expression': '原体重-现体重', 'key': lambda x: (x['weight'][0][1] - x['weight'][-1][1])},
-	'2': {'name': '体重变化比例', 'expression': '(原体重-现体重)/原体重', 'key': lambda x: (x['weight'][0][1] - x['weight'][-1][1])},
+	'2': {'name': '体重变化比例', 'expression': '(原体重-现体重)/原体重', 'key': lambda x: (x['weight'][0][1] - x['weight'][-1][1]) / x['original_weight']},
 	'3': {'name': '根号难度加权', 'expression': '(原体重-现体重)/√(初始体重-标准体重)，其中标准体重按照 BMI = 21 计算',
 	      'key': lambda x: math.copysign(((x['weight'][0][1] - x['weight'][-1][1]) / (sqrt(abs(x['original_weight'] - 21 * x['height'] ** 2)))),
 	                                     x['original_weight'] - 21 * x['height'] ** 2)},
@@ -109,6 +111,18 @@ def _get_scale(challenge_cnt_path):
 	if not os.path.exists(scale_path):
 		json.dump({}, open(scale_path, "w"))
 	return json.load(open(scale_path, "r"))
+
+
+def _get_userid(update, context, usernames):
+	scale, scale_path = _ensure_scale(update)
+	ret = {}
+	for userid in scale:
+		if not userid.isdigit():
+			continue
+		username = _get_username(update.effective_chat.id, userid)
+		if username in usernames:
+			ret[username] = userid
+	return ret
 
 
 def _get_admin(group_id):
@@ -199,7 +213,7 @@ def _get_scale_data(update, context, time_limit, users=None):
 	compare = metrics[strategy_id]['key']
 	user_data = []
 	for user_id, data in scale.items():
-		if users and user_id not in users:
+		if users and user_id not in users.values():
 			continue
 		if user_id == 'strategy' or user_id == 'deleted_user_data':
 			continue
@@ -224,9 +238,10 @@ def _get_scale_data(update, context, time_limit, users=None):
 				if abs(data_time - time_limit) > abs(last_time - time_limit):
 					ret['weight'].append([data_timestamp, weight_data])
 				break
-		ret['weight'] = ret['weight'][::-1]
-		ret['score'] = compare(ret)
-		user_data.append(ret)
+		if len(ret['weight']) != 0:
+			ret['weight'] = ret['weight'][::-1]
+			ret['score'] = compare(ret)
+			user_data.append(ret)
 	return user_data
 
 
@@ -256,6 +271,7 @@ def print_help(update, context):
 
 
 def print_help_(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=help_text)
 	logging.info(context)
@@ -263,6 +279,7 @@ def print_help_(update, context):
 
 
 def new_challenge(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		new_challenge_(update, context)
@@ -306,6 +323,7 @@ def new_challenge_(update, context):
 
 
 def end_challenge(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		end_challenge_(update, context)
@@ -335,6 +353,7 @@ def end_challenge_(update, context):
 
 
 def join_challenge(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		join_challenge_(update, context)
@@ -358,6 +377,7 @@ def join_challenge_(update, context):
 
 
 def delete_user(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		delete_user_(update, context)
@@ -388,6 +408,7 @@ def delete_user_(update, context):
 
 
 def weight(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		weight_(update, context)
@@ -439,6 +460,7 @@ def weight_(update, context):
 
 
 def height(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		height_(update, context)
@@ -473,6 +495,7 @@ def height_(update, context):
 
 
 def strategy(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		strategy_(update, context)
@@ -507,6 +530,7 @@ def strategy_(update, context):
 
 
 def week_rank(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		week_rank_(update, context)
@@ -526,6 +550,7 @@ def week_rank_(update, context):
 
 
 def overall_rank(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		overall_rank_(update, context)
@@ -542,6 +567,7 @@ def overall_rank_(update, context):
 
 
 def rank(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		rank_(update, context)
@@ -569,6 +595,7 @@ def rank_(update, context):
 
 
 def plot(update, context):
+	context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	group_id, user_id, username, message_id = _get_info(update)
 	try:
 		plot_(update, context)
@@ -583,25 +610,45 @@ def plot_(update, context):
 		return
 	group_id, user_id, username, message_id = _get_info(update)
 	inputs = update.to_dict()['message']['text']
+	compare_username = [username]
+	compare_day = 10000
 	try:
-		inputs = inputs.split()[1]
-		inputs = int(inputs)
+		inputs = inputs.split()[1:]
+		for arg in inputs:
+			if arg[0] == '@':
+				compare_username.append(arg[1:])
+			elif arg.isdigit():
+				compare_day = int(arg)
+			else:
+				context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'忽略无法识别的参数 {arg}')
+				context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	except:
-		# context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text='请输入整数。')
-		# return
-		inputs = 10000
+		raise ValueError
 	today = datetime.now()
 	today = datetime(today.year, today.month, today.day, 0, 0, 0, 0)
-	time_limit = today - timedelta(days=inputs)
-	user_data = _get_scale_data(update, context, time_limit, users=[user_id])[0]
-	weights = []
-	timestamps = []
-	for i, j in user_data['weight']:
-		timestamps.append(datetime.fromtimestamp((float(i))).strftime('%m-%d'))
-		weights.append(j)
+	time_limit = today - timedelta(days=compare_day)
+	compare_userid = _get_userid(update, context, compare_username)
+	for cmp_username in compare_username:
+		if cmp_username not in compare_userid:
+			context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'忽略无法找到的 @{cmp_username}')
+			context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
+	users_data = _get_scale_data(update, context, time_limit, users=compare_userid)
 	plt.clf()
-	plt.plot(timestamps, weights, label=f'@{username}')
-	plt.title(f'@{username} in last {inputs} days')
+	plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+	plt.gca().xaxis.set_major_locator(mdates.DayLocator())
+	for user_data in users_data:
+		weights = []
+		timestamps = []
+		for i, j in user_data['weight']:
+			timestamps.append(datetime.fromtimestamp((float(i))))
+			weights.append(j)
+		maxi = int(np.argmax(weights))
+		mini = int(np.argmin(weights))
+		plt.plot(timestamps, weights, label=f'@{user_data["username"]}', marker='o')
+		plt.annotate(weights[maxi], xy=(timestamps[maxi], weights[maxi]))
+		plt.annotate(weights[mini], xy=(timestamps[mini], weights[mini]))
+	plt.legend()
+	plt.title(f'{" ".join(list(compare_userid.keys()))} in last {compare_day} days')
 	plt.xlabel('time')
 	plt.ylabel('weight')
 	_ensure_path(f'./pic')
@@ -609,8 +656,8 @@ def plot_(update, context):
 	context.bot.send_photo(chat_id=update.effective_chat.id, reply_to_message_id=message_id, photo=open(f'./pic/{username}.png', 'rb'))
 
 
-def main(token):
-	updater = Updater(token=token, use_context=True)
+def main(bot_token):
+	updater = Updater(token=bot_token, use_context=True)
 	dp = updater.dispatcher
 	logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO, filename="bot.log", filemode="a")
 	# logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -643,4 +690,4 @@ def main(token):
 
 if __name__ == '__main__':
 	token = sys.argv[1]
-	main(token=token)
+	main(bot_token=token)
