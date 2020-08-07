@@ -634,7 +634,7 @@ def plot_(update, context):
 				context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'忽略无法找到的 @{cmp_username}')
 				context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
 	else:
-		compare_userid = [user_id]
+		compare_userid = {compare_username[0]: user_id}
 	users_data = _get_scale_data(update, context, time_limit, users=compare_userid)
 	plt.clf()
 	plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
