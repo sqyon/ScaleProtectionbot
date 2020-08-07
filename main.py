@@ -55,13 +55,11 @@ def _is_today(timestamp):
 	return record.year == today.year and record.month == today.month and record.day == today.day
 
 
-def _get_username(group_id, user_id):
-	bot = telegram.Bot(token)
+def _get_username(bot, group_id, user_id):
 	return bot.get_chat_member(group_id, user_id).to_dict()['user']['username']
 
 
-def _get_fullname(group_id, user_id):
-	bot = telegram.Bot(token)
+def _get_fullname(bot, group_id, user_id):
 	user = bot.get_chat_member(group_id, user_id).to_dict()['user']
 	if 'last_name' in user:
 		return f'{user["first_name"]} {user["last_name"]}'
@@ -113,20 +111,19 @@ def _get_scale(challenge_cnt_path):
 	return json.load(open(scale_path, "r"))
 
 
-def _get_userid(update, context, usernames):
+def _get_userid(update, context, usernames, all_flag):
 	scale, scale_path = _ensure_scale(update)
 	ret = {}
 	for userid in scale:
 		if not userid.isdigit():
 			continue
-		username = _get_username(update.effective_chat.id, userid)
-		if username in usernames:
+		username = _get_username(context.bot, update.effective_chat.id, userid)
+		if username in usernames or all_flag:
 			ret[username] = userid
 	return ret
 
 
-def _get_admin(group_id):
-	bot = telegram.Bot(token)
+def _get_admin(bot, group_id):
 	admins = bot.get_chat_administrators(group_id)
 	ret = []
 	for i in admins:
@@ -134,14 +131,14 @@ def _get_admin(group_id):
 	return ret
 
 
-def _is_admin(group_id, user_id):
-	admins = _get_admin(group_id)
+def _is_admin(bot, group_id, user_id):
+	admins = _get_admin(bot, group_id)
 	return user_id in admins
 
 
 def _admin_only(update, context):
 	group_id, user_id, username, message_id = _get_info(update)
-	if not _is_admin(group_id, user_id):
+	if not _is_admin(context.bot, group_id, user_id):
 		context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text='admin only')
 		return False
 	return True
@@ -217,8 +214,8 @@ def _get_scale_data(update, context, time_limit, users=None):
 			continue
 		if user_id == 'strategy' or user_id == 'deleted_user_data':
 			continue
-		username = _get_username(group_id, user_id)
-		fullname = _get_fullname(group_id, user_id)
+		username = _get_username(context.bot, group_id, user_id)
+		fullname = _get_fullname(context.bot, group_id, user_id)
 		if 'height' not in data:
 			context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'@{username} 没有添加过身高数据')
 			continue
@@ -612,10 +609,13 @@ def plot_(update, context):
 	inputs = update.to_dict()['message']['text']
 	compare_username = [username]
 	compare_day = 10000
+	all_flag = False
 	try:
 		inputs = inputs.split()[1:]
 		for arg in inputs:
-			if arg[0] == '@':
+			if arg == 'all':
+				all_flag = True
+			elif arg[0] == '@':
 				compare_username.append(arg[1:])
 			elif arg.isdigit():
 				compare_day = int(arg)
@@ -627,11 +627,14 @@ def plot_(update, context):
 	today = datetime.now()
 	today = datetime(today.year, today.month, today.day, 0, 0, 0, 0)
 	time_limit = today - timedelta(days=compare_day)
-	compare_userid = _get_userid(update, context, compare_username)
-	for cmp_username in compare_username:
-		if cmp_username not in compare_userid:
-			context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'忽略无法找到的 @{cmp_username}')
-			context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
+	if len(compare_username) > 1 or all_flag:
+		compare_userid = _get_userid(update, context, compare_username, all_flag)
+		for cmp_username in compare_username:
+			if cmp_username not in compare_userid:
+				context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text=f'忽略无法找到的 @{cmp_username}')
+				context.bot.send_chat_action(chat_id=update.message.chat_id, action=telegram.ChatAction.TYPING)
+	else:
+		compare_userid = [user_id]
 	users_data = _get_scale_data(update, context, time_limit, users=compare_userid)
 	plt.clf()
 	plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
