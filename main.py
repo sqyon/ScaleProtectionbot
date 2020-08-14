@@ -18,7 +18,7 @@ help_text = """欢迎使用本 bot，请使用如下命令：
 /rank 查看指定天数的排名
 /week 查看本周排名
 /overall 查看总排名
-/plot 查看指定天数对比其他用户的的体重变化图
+/plot 查看指定天数和其他用户（支持 all）的的体重变化图
 /new_challenge 在本群开展减肥挑战 admin only
 /end_challenge 结束本群的挑战 admin only
 /delete_user 删除用户数据 admin only
@@ -438,14 +438,17 @@ def weight_(update, context):
 		if _is_today(scale[user_id]['weight'][-1][0]):
 			scale[user_id]['weight'].pop(-1)
 		if len(scale[user_id]['weight']) > 0:
-			outputs += f'\n上次体重 {scale[user_id]["weight"][-1][1]} 千克，记录时间是 {_get_timestr(scale[user_id]["weight"][-1][0])}。体重变化了 {new_data[1] - scale[user_id]["weight"][-1][1]:.2f} 千克。'
+			outputs += f'\n上次体重 {scale[user_id]["weight"][-1][1]:.2f} 千克，记录时间是 {_get_timestr(scale[user_id]["weight"][-1][0])}。体重变化了 {new_data[1] - scale[user_id]["weight"][-1][1]:.2f} 千克。'
+			outputs += f'\n初始体重 {scale[user_id]["weight"][0][1]:.2f} 千克，记录时间是 {_get_timestr(scale[user_id]["weight"][0][0])}。体重变化了 {new_data[1] - scale[user_id]["weight"][0][1]:.2f} 千克。'
 
 	if 'height' in scale[user_id]:
 		this_bmi = _calc_bmi(new_data[1], scale[user_id]["height"])
 		outputs += f'\n你的 BMI 是 {this_bmi:.2f}。'
 		if len(scale[user_id]['weight']) > 0:
 			last_bmi = _calc_bmi(scale[user_id]["weight"][-1][1], scale[user_id]["height"])
-			outputs += f'上次的 BMI 是 {last_bmi:.2f}，变化了 {this_bmi - last_bmi:.2f}。'
+			start_bmi = _calc_bmi(scale[user_id]["weight"][0][1], scale[user_id]["height"])
+			outputs += f'\n上次的 BMI 是 {last_bmi:.2f}，变化了 {this_bmi - last_bmi:.2f}。'
+			outputs += f'\n初始的 BMI 是 {start_bmi:.2f}，变化了 {this_bmi - start_bmi:.2f}。'
 
 	scale[user_id]['weight'].append(new_data)
 
