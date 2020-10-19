@@ -984,7 +984,7 @@ def ckpt_overall_(update, context):
 
 	all_ckpt = []
 	for ckpt_id, ckpt in ckpts['ckpt'].items():
-		if ckpt['status'] not in ['pending', 'running', 'ended']:
+		if ckpt['status'] not in ['ended']:
 			continue
 		end_time = float(ckpt['end'])
 		all_ckpt.append([ckpt, end_time])
@@ -993,28 +993,28 @@ def ckpt_overall_(update, context):
 	history_min = {}
 	achievement = {}
 
-	cnt = 0
 	for ckpt, end_time in all_ckpt:
-		if ckpt['status'] not in ['pending', 'running', 'ended']:
-			continue
-		if cnt > 0:
-			for user_id, scale in ckpt['result'].items():
-				if user_id not in history_min:
-					if user_id in achievement:
-						achievement[user_id] += 1
-					else:
-						achievement[user_id] = 1
-				elif float(scale[1]) < history_min[user_id]:
-					if user_id in achievement:
-						achievement[user_id] += 1
-					else:
-						achievement[user_id] = 1
-				else:
-					if user_id not in achievement:
-						achievement[user_id] = 0
-
-		cnt += 1
 		for user_id, scale in ckpt['result'].items():
+			if user_id not in history_min:
+				if user_id in achievement:
+					achievement[user_id] += 1
+				else:
+					if scale is None:
+						achievement[user_id] = 0
+					else:
+						achievement[user_id] = 1
+			elif float(scale[1]) < history_min[user_id]:
+				if user_id in achievement:
+					achievement[user_id] += 1
+				else:
+					achievement[user_id] = 1
+			else:
+				if user_id not in achievement:
+					achievement[user_id] = 0
+
+		for user_id, scale in ckpt['result'].items():
+			if not scale:
+				continue
 			if user_id not in history_min:
 				history_min[user_id] = float(scale[1])
 			else:
@@ -1028,6 +1028,7 @@ def ckpt_overall_(update, context):
 
 	if len(output) == 0:
 		context.bot.send_message(chat_id=update.effective_chat.id, reply_to_message_id=message_id, text='暂无数据')
+		return
 	output_str = 'username    达标次数\n'
 	for i in output:
 		output_str += f'{i[0]}   {i[1]}\n'
