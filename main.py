@@ -49,12 +49,6 @@ metrics = {
 queueing_job = {}
 
 
-class FakeContext:
-	def __init__(self, bot, args=None):
-		self.args = args
-		self.bot = bot
-
-
 def _get_timestamp():
 	return str(datetime.now().timestamp())
 
@@ -318,6 +312,8 @@ def _get_scale_data(update, context, time_limit, users=None):
 def _rank(update, context, time_limit):
 	group_id, user_id, username, message_id = _get_info(update)
 	user_data = _get_scale_data(update, context, time_limit)
+	if user_data is None:
+		return
 	user_data.sort(key=lambda x: -x['score'])
 	rank_list = '排名    username    体重变化    分数\n'
 	for i, user in enumerate(user_data):
@@ -754,7 +750,7 @@ def ckpt_add(update, context):
 
 
 def ckpt_add_(update, context):
-	if not _running_challenge_only(update, context):
+	if not (_running_challenge_only(update, context) and _admin_only(update, context)):
 		return
 	group_id, user_id, username, message_id = _get_info(update)
 	inputs = update.to_dict()['message']['text']
@@ -762,7 +758,7 @@ def ckpt_add_(update, context):
 	if ret is None:
 		context.bot.send_message(
 			chat_id=update.effective_chat.id, reply_to_message_id=message_id,
-			text=f'输入格式错误，请按照 开始年-月-日-小时 结束年-月-日-小时 输入，例如:2020-10-1-15 2020-10-1-21')
+		text=f'输入格式错误，请按照 开始年-月-日-小时 结束年-月-日-小时 输入，例如:2020-10-1-15 2020-10-1-21')
 		return
 
 	ckpt, ckpt_path = _ensure_ckpt(update)
@@ -791,7 +787,7 @@ def ckpt_add_(update, context):
 		if start_time - now > timedelta(hours=12):
 			text = f'请大家准备好参加 checkpoint 数据统计，时间窗口为 {time_window}'
 			job_dict = {
-				'job_id': datetime.now().timestamp(),
+				'id': datetime.now().timestamp(),
 				'func': 'print_alarm',
 				'timestamp': (start_time - timedelta(hours=12)).timestamp(),
 				'args': {'chat_id': update.effective_chat.id, 'text': text, 'ckpt_num': ckpt_cnt, 'ckpt_path': ckpt_path}
@@ -879,7 +875,7 @@ def ckpt_del(update, context):
 
 
 def ckpt_del_(update, context):
-	if not _running_challenge_only(update, context):
+	if not (_running_challenge_only(update, context) and _admin_only(update, context)):
 		return
 	group_id, user_id, username, message_id = _get_info(update)
 	inputs = update.to_dict()['message']['text']
@@ -1161,8 +1157,8 @@ def maintain_job(job_queue):
 def main(bot_token):
 	updater = Updater(token=bot_token, use_context=True)
 	dp = updater.dispatcher
-	# logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO, filename="bot.log", filemode="a")
-	logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+	logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO, filename="bot.log", filemode="a")
+	# logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 	if not os.path.exists('./data'):
 		os.makedirs('./data')
