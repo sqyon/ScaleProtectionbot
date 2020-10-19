@@ -993,6 +993,13 @@ def ckpt_overall_(update, context):
 	history_min = {}
 	achievement = {}
 
+	scale, scale_path = _ensure_scale(update)
+	for user_id in scale:
+		if not user_id.isdigit():
+			continue
+		if len(scale[user_id]["weight"]) > 0:
+			history_min[user_id] = float(scale[user_id]["weight"][0][1])
+
 	for ckpt, end_time in all_ckpt:
 		for user_id, scale in ckpt['result'].items():
 			if user_id not in history_min:
@@ -1003,6 +1010,9 @@ def ckpt_overall_(update, context):
 						achievement[user_id] = 0
 					else:
 						achievement[user_id] = 1
+			elif scale is None:
+				if user_id not in achievement:
+					achievement[user_id] = 0
 			elif float(scale[1]) < history_min[user_id]:
 				if user_id in achievement:
 					achievement[user_id] += 1
@@ -1111,8 +1121,8 @@ job_funcs = {
 def done_job(job_dict):
 	job_id = job_dict['id']
 	running_jobs, running_job_path = _get_running_jobs()
-	if job_id in running_jobs:
-		del running_jobs[job_id]
+	if str(job_id) in running_jobs:
+		del running_jobs[str(job_id)]
 		json.dump(running_jobs, open(running_job_path, 'w'))
 	if job_id in queueing_job:
 		del queueing_job[job_id]
@@ -1135,6 +1145,7 @@ def start_job(job_dict, job_queue):
 		logging.info(job_dict)
 		job_queue.run_once(base_job, run_time - now, context=job_dict)
 	else:
+		job_queue.run_once(base_job, timedelta(seconds=1), context=job_dict)
 		job_dict['done_status'] = {'done': 'passed', 'timestamp': now.timestamp()}
 		done_job(job_dict)
 
